@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { config } from "./config.js";
 import { storeBlob, readBlob, sha256Hex, walrusBlobUrl } from "./walrus.js";
 import { getPrice } from "./price.js";
@@ -267,6 +269,19 @@ function buildLeaderboard(signals: SignalState[]): LeaderboardRow[] {
   }
   return rows.sort((a, b) => b.winRate - a.winRate || b.resolved - a.resolved);
 }
+
+// --- Serve the built web app (single-origin hosting) ----------------------
+const webDist = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../web/dist",
+);
+app.use(express.static(webDist));
+app.use((req, res, next) => {
+  if (req.method === "GET" && !req.path.startsWith("/api")) {
+    return res.sendFile(path.join(webDist, "index.html"));
+  }
+  next();
+});
 
 app.listen(config.port, () => {
   console.log(`Veritas API on :${config.port} (${config.network})`);
