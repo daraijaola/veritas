@@ -10,8 +10,8 @@
 
 Built for the **Tatum × Walrus — Build on Sui** hackathon.
 
-- **Network:** Sui testnet
-- **Deployed package:** [`0xc00a58f1136ac5a854a86eb7bbd45dbdacaf151d835f93a7700aba089f30c72a`](https://suiscan.xyz/testnet/object/0xc00a58f1136ac5a854a86eb7bbd45dbdacaf151d835f93a7700aba089f30c72a)
+- **Network:** Sui mainnet
+- **Deployed package:** [`0xca0ce070024a3051713c5986f9cb8680e85b7ab81d7d8f76361ddcf2a18a19be`](https://suiscan.xyz/mainnet/object/0xca0ce070024a3051713c5986f9cb8680e85b7ab81d7d8f76361ddcf2a18a19be)
 - **Stack:** Move contract · Express + TypeScript API · React + Vite web
 
 ---
