@@ -68,7 +68,49 @@ app.get("/api/price/:token", async (req, res) => {
   }
 });
 
-// --- Create (seal) a signal ------------------------------------------------
+// --- Prepare: store blob on Walrus, return blobId + hash for client-side Sui signing ---
+app.post("/api/prepare", async (req, res) => {
+  try {
+    const { handle, token, direction, entry, target, stop, thesis, imageBase64, author } =
+      req.body ?? {};
+    if (!handle || !token || !direction || entry == null || target == null || stop == null) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+    if (direction !== "LONG" && direction !== "SHORT") {
+      return res.status(400).json({ error: "direction must be LONG or SHORT" });
+    }
+
+    const payload: SealedPayload = {
+      v: 1,
+      type: "veritas.signal",
+      handle: String(handle),
+      token: String(token).toUpperCase(),
+      direction,
+      entry: String(entry),
+      target: String(target),
+      stop: String(stop),
+      thesis: String(thesis ?? ""),
+      imageBase64: imageBase64 ? String(imageBase64) : undefined,
+      createdAt: new Date().toISOString(),
+    };
+    const bytes = Buffer.from(JSON.stringify(payload));
+    const payloadHash = sha256Hex(bytes);
+
+    // Store the full payload as an immutable Walrus blob
+    const stored = await storeBlob(bytes);
+
+    res.json({
+      blobId: stored.blobId,
+      payloadHash,
+      walrusUrl: walrusBlobUrl(stored.blobId),
+    });
+  } catch (e: any) {
+    console.error("prepare error", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// --- Create (seal) a signal — legacy server-side path (kept for compatibility) ---
 app.post("/api/signals", async (req, res) => {
   try {
     const { handle, token, direction, entry, target, stop, thesis, imageBase64 } =
@@ -289,7 +331,60 @@ app.use((req, res, next) => {
   next();
 });
 
+// --- Auto-resolve background job (every 15 minutes) -----------------------
+async function runAutoResolve() {
+  try {
+    const signals = await listSignals(200);
+    const open = signals.filter((s) => !s.resolved);
+    if (open.length === 0) return;
+    console.log(`[auto-resolve] checking ${open.length} open signals`);
+    for (const s of open) {
+      try {
+        const price = await getPrice(s.token);
+        const isLong = s.direction === "LONG";
+        const hitTarget = isLong ? price.usd >= s.target : price.usd <= s.target;
+        const hitStop   = isLong ? price.usd <= s.stop  : price.usd >= s.stop;
+        if (!hitTarget && !hitStop) continue;
+
+        const win = hitTarget;
+        const ratio = isLong
+          ? (price.usd - s.entry) / s.entry
+          : (s.entry - price.usd) / s.entry;
+        const pnlBps = Math.abs(Math.round(ratio * 10000));
+
+        const outcome = {
+          v: 1 as const,
+          type: "veritas.outcome",
+          signalId: s.signalId,
+          resolvedPrice: price.usd,
+          priceSource: price.source,
+          win,
+          pnlBps,
+          resolvedAt: new Date().toISOString(),
+        };
+        const stored = await storeBlob(Buffer.from(JSON.stringify(outcome)));
+        await resolveSignalOnChain({
+          signalId: s.signalId,
+          win,
+          pnlBps,
+          resolvedPrice: price.usd,
+          outcomeBlobId: stored.blobId,
+        });
+        console.log(`[auto-resolve] resolved ${s.signalId} → ${win ? "WIN" : "LOSS"}`);
+      } catch (e: any) {
+        console.error(`[auto-resolve] failed for ${s.signalId}:`, e.message);
+      }
+    }
+  } catch (e: any) {
+    console.error("[auto-resolve] run failed:", e.message);
+  }
+}
+
 app.listen(config.port, () => {
   console.log(`Veritas API on :${config.port} (${config.network})`);
   console.log(`RPC via Tatum: ${config.suiRpcUrl}`);
+  // Start auto-resolve: runs immediately then every 15 minutes
+  runAutoResolve();
+  setInterval(runAutoResolve, 15 * 60 * 1000);
 });
+

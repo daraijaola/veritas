@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
+import { useSuiClient } from "@mysten/dapp-kit";
 import {
   api,
   type AppConfig,
   type LeaderboardRow,
   type Signal,
   type VerifyResponse,
-  type SealResponse,
 } from "./api";
+import { buildSealTx } from "./tx";
+
+const WALRUS_AGGREGATOR = "https://aggregator.walrus-testnet.walrus.space";
 
 type Tab = "feed" | "leaderboard" | "post";
 
-/** Veritas mark — a tall checkmark that reads as a "V" (verify). */
 function Logo({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 64 64" aria-hidden="true">
@@ -26,7 +29,6 @@ function Logo({ className }: { className?: string }) {
   );
 }
 
-/** Shield + check seal used on the rotating hero cube. */
 function Seal({ big }: { big?: boolean }) {
   return (
     <svg
@@ -53,6 +55,7 @@ function Seal({ big }: { big?: boolean }) {
 }
 
 export default function App() {
+  const account = useCurrentAccount();
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [tab, setTab] = useState<Tab>("feed");
   const [signals, setSignals] = useState<Signal[]>([]);
@@ -127,6 +130,13 @@ export default function App() {
             <i />
             {cfg?.network ?? "…"}
           </span>
+          {account ? (
+            <div className="wallet-connected">
+              <ConnectButton />
+            </div>
+          ) : (
+            <ConnectButton />
+          )}
           <button className="btn btn--dark nav-cta" onClick={() => goto("post")}>
             Post a call
           </button>
@@ -221,7 +231,7 @@ export default function App() {
         {tab === "feed" && (
           <Feed loading={loading} signals={signals} cfg={cfg} onChanged={refresh} onPost={() => goto("post")} />
         )}
-        {tab === "leaderboard" && <Leaderboard rows={board} />}
+        {tab === "leaderboard" && <Leaderboard rows={board} currentAddress={account?.address} />}
         {tab === "post" && (
           <PostCall
             onSealed={() => {
@@ -320,7 +330,7 @@ function SignalCard({
 }) {
   const [verify, setVerify] = useState<VerifyResponse | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const net = cfg?.network ?? "testnet";
+  const net = cfg?.network ?? "mainnet";
 
   async function doVerify() {
     setBusy("verify");
@@ -351,7 +361,7 @@ function SignalCard({
     <article className="card">
       <div className="card-head">
         <div className="who">
-          <span className="handle">@{s.handle}</span>
+          <span className="handle">{s.handle ? `@${s.handle}` : short(s.author, 6)}</span>
           <span className={`tag tag--${s.direction.toLowerCase()}`}>{s.direction}</span>
           <span className="token mono">{s.token}</span>
         </div>
@@ -390,7 +400,7 @@ function SignalCard({
 
       <div className="meta mono">
         <span title="time of sealing">{new Date(s.createdAtMs).toLocaleString()}</span>
-        <a href={blobUrl(cfg, s.blobId)} target="_blank" rel="noreferrer">
+        <a href={blobUrl(s.blobId)} target="_blank" rel="noreferrer">
           Walrus ↗
         </a>
         <a href={objUrl(net, s.signalId)} target="_blank" rel="noreferrer">
@@ -453,7 +463,7 @@ function SignalCard({
   );
 }
 
-function Leaderboard({ rows }: { rows: LeaderboardRow[] }) {
+function Leaderboard({ rows, currentAddress }: { rows: LeaderboardRow[]; currentAddress?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.resolved));
   return (
     <section className="panel">
@@ -476,9 +486,17 @@ function Leaderboard({ rows }: { rows: LeaderboardRow[] }) {
             <span className="num">Avg PnL</span>
           </div>
           {rows.map((r, i) => (
-            <div className="board-row" key={r.handle}>
+            <div
+              className={`board-row${currentAddress && r.author === currentAddress ? " board-row--me" : ""}`}
+              key={r.handle}
+            >
               <span className="rank mono">{String(i + 1).padStart(2, "0")}</span>
-              <span className="bhandle">@{r.handle}</span>
+              <span className="bhandle">
+                {r.handle ? `@${r.handle}` : short(r.author, 6)}
+                {currentAddress && r.author === currentAddress && (
+                  <span className="you-badge"> YOU</span>
+                )}
+              </span>
               <span className="num">{r.total}</span>
               <span className="num">{r.resolved}</span>
               <span className="winrate">
@@ -503,6 +521,10 @@ function Leaderboard({ rows }: { rows: LeaderboardRow[] }) {
 }
 
 function PostCall({ onSealed }: { onSealed: () => void }) {
+  const account = useCurrentAccount();
+  const suiClient = useSuiClient();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+
   const [form, setForm] = useState({
     handle: "",
     token: "SUI",
@@ -513,13 +535,19 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
     thesis: "",
   });
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<SealResponse | null>(null);
+  const [result, setResult] = useState<{
+    signalId: string;
+    txDigest: string;
+    blobId: string;
+    payloadHash: string;
+    walrusUrl: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
 
   const valid = useMemo(
-    () => form.handle && form.token && form.entry && form.target && form.stop,
-    [form],
+    () => account && form.handle && form.token && form.entry && form.target && form.stop,
+    [account, form],
   );
 
   async function fetchPrice() {
@@ -533,18 +561,84 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
   }
 
   async function submit() {
+    if (!account) return;
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const res = await api.seal(form);
-      setResult(res);
-      setTimeout(onSealed, 2800);
+      // Step 1: Store blob on Walrus via server, get blobId + payloadHash
+      const prepared = await api.prepare({
+        ...form,
+        author: account.address,
+      });
+
+      // Step 2: Build the Sui transaction client-side
+      const tx = buildSealTx({
+        handle: form.handle,
+        token: form.token,
+        direction: form.direction,
+        entry: form.entry,
+        target: form.target,
+        stop: form.stop,
+        thesis: form.thesis,
+        payloadHash: prepared.payloadHash,
+        blobId: prepared.blobId,
+      });
+
+      // Step 3: User's wallet signs and executes on Sui mainnet
+      const txResult = await signAndExecute(
+        {
+          transaction: tx as any,
+        },
+      );
+
+      // Step 4: Wait for tx to finalize and get full effects
+      const fullTx = await suiClient.waitForTransaction({
+        digest: txResult.digest,
+        options: { showEffects: true, showObjectChanges: true },
+      });
+
+      // Step 5: Extract created Signal object ID
+      const created = (fullTx.objectChanges ?? []).find(
+        (c: any) =>
+          c.type === "created" && (c.objectType?.endsWith("::registry::Signal") ?? false),
+      ) as any;
+      const signalId = created?.objectId ?? "unknown";
+
+      setResult({
+        signalId,
+        txDigest: txResult.digest,
+        blobId: prepared.blobId,
+        payloadHash: prepared.payloadHash,
+        walrusUrl: `${WALRUS_AGGREGATOR}/v1/blobs/${prepared.blobId}`,
+      });
+      setTimeout(onSealed, 3000);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message ?? "Transaction failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!account) {
+    return (
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <p className="section-label">Commit forever</p>
+            <h2 className="section-title">Seal a call</h2>
+          </div>
+        </div>
+        <div className="post">
+          <div className="connect-prompt">
+            <Seal big />
+            <p>Connect your Sui wallet to seal a call on-chain.</p>
+            <p className="hint">Your wallet address becomes your identity — no account needed.</p>
+            <ConnectButton />
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -560,6 +654,10 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
           Once sealed, the entry / target / stop are committed on-chain forever. You can never
           edit or delete this call — that's the point.
         </p>
+        <div className="wallet-info-bar mono">
+          <span>Posting as</span>
+          <code>{short(account.address, 8)}</code>
+        </div>
         <div className="form">
           <Field label="Caller handle">
             <input
@@ -622,7 +720,11 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
               onChange={(e) => setForm({ ...form, thesis: e.target.value })}
             />
           </Field>
-          <button className="btn btn--dark btn--lg btn--block" disabled={!valid || busy} onClick={submit}>
+          <button
+            className="btn btn--dark btn--lg btn--block"
+            disabled={!valid || busy}
+            onClick={submit}
+          >
             {busy ? "Sealing on Walrus + Sui…" : "Seal this call"}
           </button>
           {error && <div className="banner banner--error">{error}</div>}
@@ -635,10 +737,10 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
                 <a href={result.walrusUrl} target="_blank" rel="noreferrer">
                   Walrus ↗
                 </a>
-                <a href={result.explorer.object} target="_blank" rel="noreferrer">
+                <a href={objUrl("mainnet", result.signalId)} target="_blank" rel="noreferrer">
                   Sui object ↗
                 </a>
-                <a href={result.explorer.tx} target="_blank" rel="noreferrer">
+                <a href={txUrl("mainnet", result.txDigest)} target="_blank" rel="noreferrer">
                   Tx ↗
                 </a>
               </div>
@@ -680,7 +782,6 @@ function txUrl(net: string, digest: string): string {
   return `https://suiscan.xyz/${net}/tx/${digest}`;
 }
 
-function blobUrl(cfg: AppConfig | null, blobId: string): string {
-  const agg = cfg?.walrusAggregator ?? "https://aggregator.walrus-testnet.walrus.space";
-  return `${agg}/v1/blobs/${blobId}`;
+function blobUrl(blobId: string): string {
+  return `${WALRUS_AGGREGATOR}/v1/blobs/${blobId}`;
 }

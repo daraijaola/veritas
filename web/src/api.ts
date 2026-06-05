@@ -41,6 +41,12 @@ export interface LeaderboardRow {
   avgPnlBps: number;
 }
 
+export interface PrepareResponse {
+  blobId: string;
+  payloadHash: string;
+  walrusUrl: string;
+}
+
 export interface SealResponse {
   signalId: string;
   txDigest: string;
@@ -88,12 +94,13 @@ export const api = {
   leaderboard: () => fetch(`${BASE}/leaderboard`).then(j<LeaderboardRow[]>),
   price: (token: string) =>
     fetch(`${BASE}/price/${token}`).then(j<{ symbol: string; usd: number; source: string }>),
-  seal: (body: unknown) =>
-    fetch(`${BASE}/signals`, {
+  /** Step 1: Store blob on Walrus, get blobId + payloadHash. User signs Sui tx separately. */
+  prepare: (body: unknown) =>
+    fetch(`${BASE}/prepare`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }).then(j<SealResponse>),
+    }).then(j<PrepareResponse>),
   verify: (id: string) => fetch(`${BASE}/signals/${id}/verify`).then(j<VerifyResponse>),
   resolve: (id: string) =>
     fetch(`${BASE}/signals/${id}/resolve`, { method: "POST" }).then(j<ResolveResponse>),

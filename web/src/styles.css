@@ -1110,3 +1110,75 @@ main {
     transition: none !important;
   }
 }
+
+/* ---------- Wallet connect ---------- */
+/* Override dapp-kit default button to match our design */
+.wallet-connected button,
+button[data-radix-collection-item] {
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+}
+
+/* Connect prompt shown when wallet not connected on Post tab */
+.connect-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 56px 16px;
+  text-align: center;
+  color: var(--muted);
+}
+.connect-prompt p {
+  margin: 0;
+  font-size: 16px;
+  max-width: 360px;
+  line-height: 1.5;
+}
+.connect-prompt .hint {
+  font-size: 13px;
+  color: var(--muted);
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Wallet info bar shown above the form when connected */
+.wallet-info-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(17, 17, 15, 0.04);
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.wallet-info-bar code {
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* Leaderboard highlight for current user */
+.board-row--me {
+  background: rgba(212, 247, 90, 0.12);
+  border-radius: 8px;
+}
+.you-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--signal);
+  color: var(--ink);
+  margin-left: 6px;
+  vertical-align: middle;
+}
