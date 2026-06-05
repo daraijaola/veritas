@@ -1009,14 +1009,27 @@ main {
     left: 10px;
     right: 10px;
     top: 10px;
-    min-height: 60px;
-    padding: 0 14px;
+    min-height: 58px;
+    padding: 0 10px;
+    gap: 8px;
   }
   .net-chip {
     display: none;
   }
+  .brand-mark {
+    width: 24px;
+    height: 24px;
+  }
   .brand-word {
-    font-size: 19px;
+    display: none;
+  }
+  .nav-tabs {
+    gap: 2px;
+  }
+  .nav-tabs button {
+    padding: 8px 8px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
   }
   main {
     padding: 92px 12px 28px;
