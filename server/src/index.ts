@@ -172,6 +172,12 @@ app.get("/api/signals/:id/verify", async (req, res) => {
         : "TAMPERED — the blob does not match the on-chain commitment.",
       walrusUrl: walrusBlobUrl(s.blobId),
       createdAtMs: s.createdAtMs,
+      sealTxDigest: s.sealTxDigest,
+      explorer: {
+        object: explorerObj(s.signalId),
+        tx: s.sealTxDigest ? explorerTx(s.sealTxDigest) : "",
+        walrus: walrusBlobUrl(s.blobId),
+      },
     });
   } catch (e: any) {
     res.status(502).json({ error: e.message });

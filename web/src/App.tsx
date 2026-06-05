@@ -26,6 +26,32 @@ function Logo({ className }: { className?: string }) {
   );
 }
 
+/** Shield + check seal used on the rotating hero cube. */
+function Seal({ big }: { big?: boolean }) {
+  return (
+    <svg
+      className={`seal ${big ? "seal--big" : ""}`}
+      viewBox="0 0 32 32"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M16 4l10 4.2v6.6C26 21.4 21.6 25.4 16 27 10.4 25.4 6 21.4 6 14.8V8.2z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M11 16l3.4 3.4L21 12.8"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function App() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [tab, setTab] = useState<Tab>("feed");
@@ -59,12 +85,6 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  const stats = useMemo(() => {
-    const callers = new Set(signals.map((s) => s.handle)).size;
-    const resolved = signals.filter((s) => s.resolved).length;
-    return { sealed: signals.length, callers, resolved };
-  }, [signals]);
 
   function goto(t: Tab) {
     setTab(t);
@@ -135,22 +155,50 @@ export default function App() {
                 View leaderboard
               </button>
             </div>
-            <dl className="hero-stats">
-              <div>
-                <dt>{stats.sealed}</dt>
-                <dd>Calls sealed</dd>
-              </div>
-              <div>
-                <dt>{stats.callers}</dt>
-                <dd>Callers</dd>
-              </div>
-              <div>
-                <dt>{stats.resolved}</dt>
-                <dd>Resolved</dd>
-              </div>
-            </dl>
           </div>
           <aside className="hero-side" aria-hidden="true">
+            <div className="scene-wrap">
+              <div className="rings">
+                <span className="ring r1" />
+                <span className="ring r2" />
+                <span className="ring r3" />
+              </div>
+              <div className="scene">
+                <div className="cube">
+                  <div className="cf front">
+                    <span className="cf-label">commitment</span>
+                    <Seal big />
+                    <span className="cf-foot">sha256 · sealed</span>
+                  </div>
+                  <div className="cf back">
+                    <span className="cf-label">walrus blob</span>
+                    <code className="cf-hash">0x9f…a7c4</code>
+                    <span className="cf-foot">content-addressed</span>
+                  </div>
+                  <div className="cf right">
+                    <span className="cf-label">sui object</span>
+                    <span className="cf-big">SUI</span>
+                    <span className="cf-foot">immutable</span>
+                  </div>
+                  <div className="cf left">
+                    <span className="cf-label">via</span>
+                    <span className="cf-big">Tatum</span>
+                    <span className="cf-foot">rpc gateway</span>
+                  </div>
+                  <div className="cf top">
+                    <span className="cf-label">verdict</span>
+                    <span className="cf-check">✓</span>
+                    <span className="cf-foot">verified</span>
+                  </div>
+                  <div className="cf bottom">
+                    <span className="cf-label">pnl</span>
+                    <span className="cf-big up">+27.8%</span>
+                    <span className="cf-foot">resolved</span>
+                  </div>
+                </div>
+                <div className="scene-shadow" />
+              </div>
+            </div>
             <div className="seal-card">
               <div className="seal-card__top">
                 <Logo className="seal-card__mark" />
@@ -348,6 +396,11 @@ function SignalCard({
         <a href={objUrl(net, s.signalId)} target="_blank" rel="noreferrer">
           Sui ↗
         </a>
+        {s.sealTxDigest && (
+          <a href={txUrl(net, s.sealTxDigest)} target="_blank" rel="noreferrer">
+            Tx ↗
+          </a>
+        )}
       </div>
 
       <div className="actions">
@@ -363,10 +416,37 @@ function SignalCard({
 
       {verify && (
         <div className={`verify-box ${verify.match ? "ok" : "bad"}`}>
-          <div className="verdict mono">{verify.match ? "✓ VERIFIED" : "✗ TAMPERED"}</div>
-          <div className="verdict-text">{verify.verdict}</div>
-          <code className="mono">chain&nbsp;&nbsp;{short(verify.onChainHash, 10)}</code>
-          <code className="mono">walrus&nbsp;{short(verify.recomputedHash, 10)}</code>
+          <div className="verdict mono">
+            {verify.match ? "✓ VERIFIED — never edited" : "✗ TAMPERED"}
+          </div>
+          <p className="verdict-text">{verify.verdict}</p>
+          <div className="proof">
+            <div className="proof-row">
+              <span className="proof-k mono">on-chain commitment (Sui)</span>
+              <code className="proof-v mono">{verify.onChainHash}</code>
+            </div>
+            <div className="proof-row">
+              <span className="proof-k mono">recomputed from Walrus blob</span>
+              <code className="proof-v mono">{verify.recomputedHash}</code>
+            </div>
+            <div className="proof-row">
+              <span className="proof-k mono">walrus blob id</span>
+              <code className="proof-v mono">{verify.blobId}</code>
+            </div>
+          </div>
+          <div className="links mono">
+            <a href={verify.explorer.walrus} target="_blank" rel="noreferrer">
+              Walrus blob ↗
+            </a>
+            <a href={verify.explorer.object} target="_blank" rel="noreferrer">
+              Sui object ↗
+            </a>
+            {verify.explorer.tx && (
+              <a href={verify.explorer.tx} target="_blank" rel="noreferrer">
+                Sui tx ↗
+              </a>
+            )}
+          </div>
         </div>
       )}
     </article>
@@ -594,6 +674,10 @@ function short(s: string, n = 6): string {
 
 function objUrl(net: string, id: string): string {
   return `https://suiscan.xyz/${net}/object/${id}`;
+}
+
+function txUrl(net: string, digest: string): string {
+  return `https://suiscan.xyz/${net}/tx/${digest}`;
 }
 
 function blobUrl(cfg: AppConfig | null, blobId: string): string {

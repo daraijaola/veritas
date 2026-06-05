@@ -274,33 +274,6 @@ main {
   gap: 12px;
   margin: 32px 0 0;
 }
-.hero-stats {
-  display: flex;
-  gap: clamp(22px, 4vw, 48px);
-  margin: 40px 0 0;
-  padding: 24px 0 0;
-  border-top: 1px solid var(--line);
-}
-.hero-stats div {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.hero-stats dt {
-  font-size: 38px;
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1;
-}
-.hero-stats dd {
-  margin: 0;
-  font-family: var(--mono);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 11px;
-  color: var(--muted);
-}
-
 /* hero side panel — a stylised "seal" card */
 .hero-side {
   justify-self: stretch;
@@ -375,6 +348,168 @@ main {
   font-size: 10.5px;
   color: rgba(244, 242, 234, 0.5);
   letter-spacing: 0.12em;
+}
+
+/* ---------- Hero 3D cube (desktop only) ---------- */
+/* On desktop the rotating cube is the hero visual; the flat seal-card is
+   hidden. On phones the cube is hidden and the seal-card is shown instead. */
+.scene-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 420px;
+  perspective: 1200px;
+}
+.hero-side .seal-card {
+  display: none;
+}
+.rings {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.ring {
+  position: absolute;
+  border: 1px solid var(--line-soft);
+  border-radius: 50%;
+}
+.ring.r1 {
+  width: 300px;
+  height: 300px;
+  animation: spin 26s linear infinite;
+  border-style: dashed;
+}
+.ring.r2 {
+  width: 420px;
+  height: 420px;
+  border-color: rgba(212, 247, 90, 0.4);
+}
+.ring.r3 {
+  width: 540px;
+  height: 540px;
+  animation: spin 60s linear infinite reverse;
+  border-style: dashed;
+}
+.scene {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  transform-style: preserve-3d;
+  animation: orbit 16s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+}
+.cube {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+.cf {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: space-between;
+  padding: 20px;
+  border: 1px solid rgba(244, 242, 234, 0.2);
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+.cf::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(244, 242, 234, 0.1) 1px, transparent 1px),
+    linear-gradient(rgba(244, 242, 234, 0.1) 1px, transparent 1px);
+  background-size: 26px 26px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.cf > * {
+  position: relative;
+  z-index: 1;
+}
+.cf-label,
+.cf-foot {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.66;
+}
+.cf-foot {
+  opacity: 0.5;
+}
+.cf-big {
+  font-size: 38px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.cf-hash {
+  font-size: 22px;
+  color: var(--signal);
+}
+.cf-check {
+  font-size: 64px;
+  line-height: 1;
+  color: var(--signal);
+}
+.cf .up {
+  color: var(--signal);
+}
+.seal {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+.seal--big {
+  width: 88px;
+  height: 88px;
+  color: var(--signal);
+}
+.front {
+  transform: translateZ(120px);
+}
+.back {
+  transform: rotateY(180deg) translateZ(120px);
+}
+.right {
+  transform: rotateY(90deg) translateZ(120px);
+}
+.left {
+  transform: rotateY(-90deg) translateZ(120px);
+}
+.top {
+  transform: rotateX(90deg) translateZ(120px);
+}
+.bottom {
+  transform: rotateX(-90deg) translateZ(120px);
+}
+.scene-shadow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(17, 17, 15, 0.22), transparent 62%);
+  transform: translate(-50%, 28%) rotateX(74deg) translateZ(-180px);
+  filter: blur(8px);
+  opacity: 0.5;
+}
+@keyframes orbit {
+  0% {
+    transform: rotateX(-22deg) rotateY(0deg);
+  }
+  100% {
+    transform: rotateX(-22deg) rotateY(360deg);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ---------- Banners ---------- */
@@ -600,6 +735,51 @@ main {
 .verify-box code {
   font-size: 11px;
   color: var(--muted);
+}
+.proof {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(17, 17, 15, 0.04);
+  border: 1px solid var(--line);
+}
+.proof-row {
+  display: grid;
+  gap: 2px;
+}
+.proof-k {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+.proof-v {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink);
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+.verify-box.ok .proof-row:nth-child(1) .proof-v,
+.verify-box.ok .proof-row:nth-child(2) .proof-v {
+  color: var(--up);
+}
+.verify-box .links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 2px;
+  font-size: 12px;
+}
+.verify-box .links a {
+  color: var(--ink);
+  text-decoration: none;
+  border-bottom: 1px solid var(--signal);
+}
+.verify-box .links a:hover {
+  opacity: 0.7;
 }
 
 /* ---------- Leaderboard ---------- */
@@ -841,6 +1021,12 @@ main {
   .hero-side {
     order: -1;
   }
+  .scene-wrap {
+    display: none;
+  }
+  .hero-side .seal-card {
+    display: block;
+  }
   .nav {
     grid-template-columns: auto 1fr;
     padding: 0 18px;
@@ -868,23 +1054,30 @@ main {
     left: 10px;
     right: 10px;
     top: 10px;
-    min-height: 60px;
-    padding: 0 14px;
+    min-height: 58px;
+    padding: 0 10px;
+    gap: 8px;
   }
   .net-chip {
     display: none;
   }
+  .brand-mark {
+    width: 24px;
+    height: 24px;
+  }
   .brand-word {
-    font-size: 19px;
+    display: none;
+  }
+  .nav-tabs {
+    gap: 2px;
+  }
+  .nav-tabs button {
+    padding: 8px 8px;
+    font-size: 11px;
+    letter-spacing: 0.02em;
   }
   main {
     padding: 92px 12px 28px;
-  }
-  .hero-stats {
-    gap: 22px;
-  }
-  .hero-stats dt {
-    font-size: 30px;
   }
   .grid {
     grid-template-columns: 1fr;
