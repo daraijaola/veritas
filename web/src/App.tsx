@@ -396,6 +396,11 @@ function SignalCard({
         <a href={objUrl(net, s.signalId)} target="_blank" rel="noreferrer">
           Sui ↗
         </a>
+        {s.sealTxDigest && (
+          <a href={txUrl(net, s.sealTxDigest)} target="_blank" rel="noreferrer">
+            Tx ↗
+          </a>
+        )}
       </div>
 
       <div className="actions">
@@ -411,10 +416,37 @@ function SignalCard({
 
       {verify && (
         <div className={`verify-box ${verify.match ? "ok" : "bad"}`}>
-          <div className="verdict mono">{verify.match ? "✓ VERIFIED" : "✗ TAMPERED"}</div>
-          <div className="verdict-text">{verify.verdict}</div>
-          <code className="mono">chain&nbsp;&nbsp;{short(verify.onChainHash, 10)}</code>
-          <code className="mono">walrus&nbsp;{short(verify.recomputedHash, 10)}</code>
+          <div className="verdict mono">
+            {verify.match ? "✓ VERIFIED — never edited" : "✗ TAMPERED"}
+          </div>
+          <p className="verdict-text">{verify.verdict}</p>
+          <div className="proof">
+            <div className="proof-row">
+              <span className="proof-k mono">on-chain commitment (Sui)</span>
+              <code className="proof-v mono">{verify.onChainHash}</code>
+            </div>
+            <div className="proof-row">
+              <span className="proof-k mono">recomputed from Walrus blob</span>
+              <code className="proof-v mono">{verify.recomputedHash}</code>
+            </div>
+            <div className="proof-row">
+              <span className="proof-k mono">walrus blob id</span>
+              <code className="proof-v mono">{verify.blobId}</code>
+            </div>
+          </div>
+          <div className="links mono">
+            <a href={verify.explorer.walrus} target="_blank" rel="noreferrer">
+              Walrus blob ↗
+            </a>
+            <a href={verify.explorer.object} target="_blank" rel="noreferrer">
+              Sui object ↗
+            </a>
+            {verify.explorer.tx && (
+              <a href={verify.explorer.tx} target="_blank" rel="noreferrer">
+                Sui tx ↗
+              </a>
+            )}
+          </div>
         </div>
       )}
     </article>
@@ -642,6 +674,10 @@ function short(s: string, n = 6): string {
 
 function objUrl(net: string, id: string): string {
   return `https://suiscan.xyz/${net}/object/${id}`;
+}
+
+function txUrl(net: string, digest: string): string {
+  return `https://suiscan.xyz/${net}/tx/${digest}`;
 }
 
 function blobUrl(cfg: AppConfig | null, blobId: string): string {
