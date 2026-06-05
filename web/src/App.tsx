@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
-import { useSuiClient } from "@mysten/dapp-kit";
+import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from "@mysten/dapp-kit";
 import {
   api,
   type AppConfig,
@@ -9,10 +8,27 @@ import {
   type VerifyResponse,
 } from "./api";
 import { buildSealTx } from "./tx";
+import { nativeShare, signalUrl, type ShareCardData } from "./share";
 
 const WALRUS_AGGREGATOR = "https://aggregator.walrus-testnet.walrus.space";
 
 type Tab = "feed" | "leaderboard" | "post";
+
+/** Inline SVG spinner — shows when loading */
+function Spinner({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      className="spinner"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40 20" />
+    </svg>
+  );
+}
 
 function Logo({ className }: { className?: string }) {
   return (
@@ -288,8 +304,52 @@ function Feed({
   onChanged: () => void;
   onPost: () => void;
 }) {
+  const [highlightedId, setHighlightedId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("s");
+  });
+
+  const highlightedSignal = useMemo(() => {
+    if (!highlightedId) return null;
+    return signals.find((s) => s.signalId === highlightedId) ?? null;
+  }, [signals, highlightedId]);
+
+  // Show max 3 most-recent calls per caller in the feed
+  const shown = useMemo(() => {
+    const countByAuthor = new Map<string, number>();
+    return signals.filter((s) => {
+      if (s.signalId === highlightedId) return false;
+      const n = countByAuthor.get(s.author) ?? 0;
+      if (n >= 3) return false;
+      countByAuthor.set(s.author, n + 1);
+      return true;
+    });
+  }, [signals, highlightedId]);
+
+  function clearHighlight() {
+    setHighlightedId(null);
+    window.history.replaceState({}, "", window.location.pathname);
+  }
+
   return (
     <section className="panel">
+      {highlightedSignal && (
+        <div className="shared-call-section" style={{ marginBottom: "32px", borderBottom: "1px dashed var(--line)", paddingBottom: "24px" }}>
+          <div className="panel-head" style={{ marginBottom: "16px" }}>
+            <div>
+              <p className="section-label">Shared call</p>
+              <h2 className="section-title" style={{ fontSize: "28px" }}>Verified alpha</h2>
+            </div>
+            <button className="btn btn--sm" onClick={clearHighlight}>
+              ← Show all feed
+            </button>
+          </div>
+          <div style={{ maxWidth: "480px" }}>
+            <SignalCard s={highlightedSignal} cfg={cfg} onChanged={onChanged} isHighlighted />
+          </div>
+        </div>
+      )}
+
       <div className="panel-head">
         <div>
           <p className="section-label">The feed</p>
@@ -300,8 +360,8 @@ function Feed({
         </button>
       </div>
       {loading ? (
-        <div className="empty">Loading sealed calls from Sui…</div>
-      ) : signals.length === 0 ? (
+        <div className="empty"><Spinner size={18} /> Loading sealed calls from Sui…</div>
+      ) : shown.length === 0 && !highlightedSignal ? (
         <div className="empty">
           No calls sealed yet.{" "}
           <button className="linkbtn" onClick={onPost}>
@@ -310,7 +370,7 @@ function Feed({
         </div>
       ) : (
         <div className="grid">
-          {signals.map((s) => (
+          {shown.map((s) => (
             <SignalCard key={s.signalId} s={s} cfg={cfg} onChanged={onChanged} />
           ))}
         </div>
@@ -323,10 +383,12 @@ function SignalCard({
   s,
   cfg,
   onChanged,
+  isHighlighted,
 }: {
   s: Signal;
   cfg: AppConfig | null;
   onChanged: () => void;
+  isHighlighted?: boolean;
 }) {
   const [verify, setVerify] = useState<VerifyResponse | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -343,6 +405,12 @@ function SignalCard({
     }
   }
 
+  useEffect(() => {
+    if (isHighlighted && !verify && busy !== "verify") {
+      doVerify();
+    }
+  }, [isHighlighted]);
+
   async function doResolve() {
     setBusy("resolve");
     try {
@@ -358,7 +426,7 @@ function SignalCard({
   const pnlPct = (s.pnlBps / 100) * (s.win ? 1 : -1);
 
   return (
-    <article className="card">
+    <article className={`card${isHighlighted ? " is-highlighted" : ""}`}>
       <div className="card-head">
         <div className="who">
           <span className="handle">{s.handle ? `@${s.handle}` : short(s.author, 6)}</span>
@@ -414,14 +482,29 @@ function SignalCard({
       </div>
 
       <div className="actions">
-        <button className="btn btn--sm" onClick={doVerify} disabled={busy !== null}>
-          {busy === "verify" ? "Verifying…" : "Verify"}
+        <button
+          className={`btn btn--sm${busy === "verify" ? " btn--loading" : ""}`}
+          onClick={doVerify}
+          disabled={busy !== null}
+        >
+          {busy === "verify" ? <><Spinner /> Verifying…</> : "Verify"}
         </button>
         {!s.resolved && (
-          <button className="btn btn--sm btn--dark" onClick={doResolve} disabled={busy !== null}>
-            {busy === "resolve" ? "Resolving…" : "Resolve @ live price"}
+          <button
+            className={`btn btn--sm btn--dark${busy === "resolve" ? " btn--loading" : ""}`}
+            onClick={doResolve}
+            disabled={busy !== null}
+          >
+            {busy === "resolve" ? <><Spinner size={13} /> Resolving…</> : "Resolve @ live price"}
           </button>
         )}
+        <button
+          className="btn btn--sm"
+          onClick={() => shareSignal(s)}
+          title="Share on X (Twitter)"
+        >
+          Share ↗
+        </button>
       </div>
 
       {verify && (
@@ -535,6 +618,11 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
     thesis: "",
   });
   const [busy, setBusy] = useState(false);
+  const [priceBusy, setPriceBusy] = useState(false);
+  const [shareData, setShareData] = useState<{
+    result: { signalId: string; txDigest: string; blobId: string; walrusUrl: string };
+    handle: string; token: string; direction: string; entry: string; target: string; stop: string; thesis: string;
+  } | null>(null);
   const [result, setResult] = useState<{
     signalId: string;
     txDigest: string;
@@ -551,12 +639,15 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
   );
 
   async function fetchPrice() {
+    setPriceBusy(true);
     try {
       const p = await api.price(form.token);
       setLivePrice(p.usd);
       setForm((f) => ({ ...f, entry: String(p.usd) }));
     } catch {
       setLivePrice(null);
+    } finally {
+      setPriceBusy(false);
     }
   }
 
@@ -612,7 +703,12 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
         payloadHash: prepared.payloadHash,
         walrusUrl: `${WALRUS_AGGREGATOR}/v1/blobs/${prepared.blobId}`,
       });
-      setTimeout(onSealed, 3000);
+      // Show share card instead of auto-redirecting
+      setShareData({
+        result: { signalId, txDigest: txResult.digest, blobId: prepared.blobId, walrusUrl: `${WALRUS_AGGREGATOR}/v1/blobs/${prepared.blobId}` },
+        handle: form.handle, token: form.token, direction: form.direction,
+        entry: form.entry, target: form.target, stop: form.stop, thesis: form.thesis,
+      });
     } catch (e: any) {
       setError(e.message ?? "Transaction failed");
     } finally {
@@ -642,6 +738,7 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
   }
 
   return (
+    <>
     <section className="panel">
       <div className="panel-head">
         <div>
@@ -672,8 +769,13 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
                 value={form.token}
                 onChange={(e) => setForm({ ...form, token: e.target.value.toUpperCase() })}
               />
-              <button className="btn btn--sm" type="button" onClick={fetchPrice}>
-                Use live price
+              <button
+                className={`btn btn--sm${priceBusy ? " btn--loading" : ""}`}
+                type="button"
+                onClick={fetchPrice}
+                disabled={priceBusy}
+              >
+                {priceBusy ? <><Spinner /> Fetching…</> : "Use live price"}
               </button>
             </div>
             {livePrice != null && <small className="mono">live ${livePrice}</small>}
@@ -721,35 +823,153 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
             />
           </Field>
           <button
-            className="btn btn--dark btn--lg btn--block"
+            className={`btn btn--dark btn--lg btn--block${busy ? " btn--loading" : ""}`}
             disabled={!valid || busy}
             onClick={submit}
           >
-            {busy ? "Sealing on Walrus + Sui…" : "Seal this call"}
+            {busy ? <><Spinner size={16} /> Sealing on Walrus + Sui…</> : "Seal this call"}
           </button>
           {error && <div className="banner banner--error">{error}</div>}
-          {result && (
+          {result && !shareData && (
             <div className="seal-result">
               <div className="ok-row mono">✓ SEALED &amp; ANCHORED ON-CHAIN</div>
               <code className="mono">blobId {short(result.blobId, 12)}</code>
               <code className="mono">hash&nbsp;&nbsp;&nbsp;{short(result.payloadHash, 12)}</code>
               <div className="links mono">
-                <a href={result.walrusUrl} target="_blank" rel="noreferrer">
-                  Walrus ↗
-                </a>
-                <a href={objUrl("mainnet", result.signalId)} target="_blank" rel="noreferrer">
-                  Sui object ↗
-                </a>
-                <a href={txUrl("mainnet", result.txDigest)} target="_blank" rel="noreferrer">
-                  Tx ↗
-                </a>
+                <a href={result.walrusUrl} target="_blank" rel="noreferrer">Walrus ↗</a>
+                <a href={objUrl("mainnet", result.signalId)} target="_blank" rel="noreferrer">Sui object ↗</a>
+                <a href={txUrl("mainnet", result.txDigest)} target="_blank" rel="noreferrer">Tx ↗</a>
               </div>
             </div>
           )}
         </div>
       </div>
     </section>
+    {shareData && (
+      <ShareCard
+        data={shareData}
+        onClose={() => {
+          setShareData(null);
+          onSealed();
+        }}
+      />
+    )}
+    </>
   );
+}
+
+/** Beautiful share card modal shown after sealing */
+function ShareCard({
+  data,
+  onClose,
+}: {
+  data: { result: { signalId: string; txDigest: string; blobId: string; walrusUrl: string }; handle: string; token: string; direction: string; entry: string; target: string; stop: string; thesis: string };
+  onClose: () => void;
+}) {
+  const { result, handle, token, direction, entry, target, stop, thesis } = data;
+  const [copied, setCopied] = useState(false);
+  const isLong = direction === "LONG";
+
+  const shareData: ShareCardData = {
+    handle,
+    token,
+    direction,
+    entry,
+    target,
+    stop,
+    thesis,
+    signalId: result.signalId,
+  };
+
+  function copyLink() {
+    const link = signalUrl(result.signalId);
+    navigator.clipboard.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="share-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="share-modal">
+        {/* The shareable card */}
+        <div className="share-card">
+          <div className="sc-grid" aria-hidden />
+          <div className="sc-top">
+            <div className="sc-brand">
+              <svg width="20" height="20" viewBox="0 0 64 64" fill="none">
+                <path d="M13 31L27 46L53 13" stroke="#d4f75a" strokeWidth="6" strokeLinecap="square" />
+              </svg>
+              <span>VERITAS</span>
+            </div>
+            <span className={`sc-dir ${isLong ? "sc-dir--long" : "sc-dir--short"}`}>{direction}</span>
+          </div>
+
+          <div className="sc-token">${token}</div>
+
+          <div className="sc-levels">
+            <div className="sc-level">
+              <span className="sc-lk">Entry</span>
+              <span className="sc-lv">{entry}</span>
+            </div>
+            <div className="sc-level sc-level--target">
+              <span className="sc-lk">Target ↑</span>
+              <span className="sc-lv sc-lv--up">{target}</span>
+            </div>
+            <div className="sc-level">
+              <span className="sc-lk">Stop ↓</span>
+              <span className="sc-lv sc-lv--dn">{stop}</span>
+            </div>
+          </div>
+
+          {thesis && <p className="sc-thesis">"{thesis}"</p>}
+
+          <div className="sc-footer">
+            <span className="sc-handle">@{handle || "anon"}</span>
+            <span className="sc-seal mono">SEALED ON SUI × WALRUS</span>
+          </div>
+        </div>
+
+        <div className="share-actions">
+          <button
+            className="btn btn--dark btn--lg"
+            onClick={() => nativeShare(shareData).catch(() => {})}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.746l7.73-8.835L1.254 2.25H8.08l4.259 5.629 5.905-5.629zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            Share call
+          </button>
+          <button className="btn btn--lg" onClick={copyLink}>
+            {copied ? "✓ Copied!" : "Copy link"}
+          </button>
+        </div>
+
+        <div className="share-proof mono">
+          <a href={result.walrusUrl} target="_blank" rel="noreferrer">Walrus blob ↗</a>
+          <a href={`https://suiscan.xyz/mainnet/object/${result.signalId}`} target="_blank" rel="noreferrer">Sui object ↗</a>
+          <a href={`https://suiscan.xyz/mainnet/tx/${result.txDigest}`} target="_blank" rel="noreferrer">Tx ↗</a>
+        </div>
+
+        <button className="share-close linkbtn" onClick={onClose}>
+          Continue to feed →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Share a signal from the feed */
+function shareSignal(s: Signal) {
+  const data: ShareCardData = {
+    handle: s.handle,
+    token: s.token,
+    direction: s.direction,
+    entry: fmt(s.entry),
+    target: fmt(s.target),
+    stop: fmt(s.stop),
+    thesis: s.thesis,
+    signalId: s.signalId,
+  };
+  nativeShare(data).catch(() => {});
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

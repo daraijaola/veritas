@@ -8,11 +8,10 @@ import "@mysten/dapp-kit/dist/index.css";
 
 const queryClient = new QueryClient();
 
-// Use Tatum's RPC for Sui mainnet (key hackathon integration)
-const TATUM_RPC = "https://sui-mainnet.gateway.tatum.io";
-
+// Public Sui mainnet fullnode — no API key needed in the browser
+// (Tatum is used server-side only, where we have the API key)
 const networks = {
-  mainnet: { url: TATUM_RPC },
+  mainnet: { url: "https://fullnode.mainnet.sui.io:443" },
 };
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
