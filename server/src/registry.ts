@@ -130,11 +130,15 @@ export interface SignalState {
   resolvedPrice: number;
   outcomeBlobId: string;
   resolvedAtMs: number;
+  sealTxDigest: string;
+  resolveTxDigest: string;
 }
 
 function parseSignalFields(objectId: string, fields: Record<string, any>): SignalState {
   return {
     signalId: objectId,
+    sealTxDigest: "",
+    resolveTxDigest: "",
     author: fields.author,
     handle: fields.handle,
     token: fields.token,
@@ -155,13 +159,51 @@ function parseSignalFields(objectId: string, fields: Record<string, any>): Signa
   };
 }
 
+/**
+ * Map each signal id to the transaction digest that sealed it (and resolved it),
+ * read from the on-chain SignalSealed / SignalResolved events via Tatum RPC.
+ * These digests are the verifiable on-chain proof links shown in the UI.
+ */
+async function fetchTxDigests(
+  limit = 200,
+): Promise<{ seal: Map<string, string>; resolve: Map<string, string> }> {
+  const client = getClient();
+  const seal = new Map<string, string>();
+  const resolve = new Map<string, string>();
+  const [sealed, resolved] = await Promise.all([
+    client.queryEvents({
+      query: { MoveEventType: `${config.packageId}::registry::SignalSealed` },
+      limit,
+      order: "descending",
+    }),
+    client.queryEvents({
+      query: { MoveEventType: `${config.packageId}::registry::SignalResolved` },
+      limit,
+      order: "descending",
+    }),
+  ]);
+  for (const e of sealed.data) {
+    const id = (e.parsedJson as any)?.signal_id as string | undefined;
+    if (id && !seal.has(id)) seal.set(id, e.id.txDigest);
+  }
+  for (const e of resolved.data) {
+    const id = (e.parsedJson as any)?.signal_id as string | undefined;
+    if (id && !resolve.has(id)) resolve.set(id, e.id.txDigest);
+  }
+  return { seal, resolve };
+}
+
 /** Read the authoritative on-chain state of a single Signal object via Tatum RPC. */
 export async function getSignal(signalId: string): Promise<SignalState | null> {
   const client = getClient();
   const obj = await client.getObject({ id: signalId, options: { showContent: true } });
   const content = obj.data?.content;
   if (!content || content.dataType !== "moveObject") return null;
-  return parseSignalFields(signalId, content.fields as Record<string, any>);
+  const signal = parseSignalFields(signalId, content.fields as Record<string, any>);
+  const { seal, resolve } = await fetchTxDigests();
+  signal.sealTxDigest = seal.get(signalId) ?? "";
+  signal.resolveTxDigest = resolve.get(signalId) ?? "";
+  return signal;
 }
 
 /** List all sealed signals by querying SignalSealed events through Tatum RPC. */
@@ -181,11 +223,21 @@ export async function listSignals(limit = 200): Promise<SignalState[]> {
     ids,
     options: { showContent: true },
   });
+  const sealMap = new Map<string, string>();
+  for (const e of events.data) {
+    const id = (e.parsedJson as any)?.signal_id as string | undefined;
+    if (id && !sealMap.has(id)) sealMap.set(id, e.id.txDigest);
+  }
+  const resolveMap = (await fetchTxDigests()).resolve;
+
   const signals: SignalState[] = [];
   for (const o of objs) {
     const content = o.data?.content;
     if (content && content.dataType === "moveObject" && o.data) {
-      signals.push(parseSignalFields(o.data.objectId, content.fields as Record<string, any>));
+      const s = parseSignalFields(o.data.objectId, content.fields as Record<string, any>);
+      s.sealTxDigest = sealMap.get(o.data.objectId) ?? "";
+      s.resolveTxDigest = resolveMap.get(o.data.objectId) ?? "";
+      signals.push(s);
     }
   }
   return signals;

@@ -27,6 +27,8 @@ export interface Signal {
   resolvedPrice: number;
   outcomeBlobId: string;
   resolvedAtMs: number;
+  sealTxDigest: string;
+  resolveTxDigest: string;
 }
 
 export interface LeaderboardRow {
@@ -57,6 +59,8 @@ export interface VerifyResponse {
   verdict: string;
   walrusUrl: string;
   createdAtMs: number;
+  sealTxDigest: string;
+  explorer: { object: string; tx: string; walrus: string };
 }
 
 export interface ResolveResponse {
