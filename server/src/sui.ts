@@ -10,8 +10,8 @@ import { config } from "./config.js";
  */
 /** fetch wrapper that retries on 429 / 5xx with exponential backoff. */
 async function retryingFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
 ): Promise<Response> {
   const maxRetries = 5;
   let delay = 600;

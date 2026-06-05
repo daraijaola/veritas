@@ -10,6 +10,22 @@ import {
 
 type Tab = "feed" | "leaderboard" | "post";
 
+/** Veritas mark — a tall checkmark that reads as a "V" (verify). */
+function Logo({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 64 64" aria-hidden="true">
+      <path
+        d="M13 31 L27 46 L53 13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="6"
+        strokeLinecap="square"
+        strokeLinejoin="miter"
+      />
+    </svg>
+  );
+}
+
 export default function App() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [tab, setTab] = useState<Tab>("feed");
@@ -17,6 +33,7 @@ export default function App() {
   const [board, setBoard] = useState<LeaderboardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [scrolled, setScrolled] = useState(false);
 
   async function refresh() {
     try {
@@ -36,74 +53,166 @@ export default function App() {
     refresh();
   }, []);
 
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const stats = useMemo(() => {
+    const callers = new Set(signals.map((s) => s.handle)).size;
+    const resolved = signals.filter((s) => s.resolved).length;
+    return { sealed: signals.length, callers, resolved };
+  }, [signals]);
+
+  function goto(t: Tab) {
+    setTab(t);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo">◆</span>
-          <div>
-            <div className="brand-name">VERITAS</div>
-            <div className="brand-sub">Sealed Alpha</div>
-          </div>
-        </div>
-        <nav className="tabs">
-          <button className={tab === "feed" ? "active" : ""} onClick={() => setTab("feed")}>
+    <div className={`app${scrolled ? " is-scrolled" : ""}`}>
+      <header className="nav">
+        <a
+          className="brand"
+          href="#top"
+          onClick={(e) => {
+            e.preventDefault();
+            goto("feed");
+          }}
+        >
+          <Logo className="brand-mark" />
+          <span className="brand-word">VERITAS</span>
+        </a>
+        <nav className="nav-tabs">
+          <button className={tab === "feed" ? "active" : ""} onClick={() => goto("feed")}>
             Feed
           </button>
           <button
             className={tab === "leaderboard" ? "active" : ""}
-            onClick={() => setTab("leaderboard")}
+            onClick={() => goto("leaderboard")}
           >
             Leaderboard
           </button>
-          <button className={tab === "post" ? "active" : ""} onClick={() => setTab("post")}>
-            + Post a Call
+          <button
+            className={`only-mobile${tab === "post" ? " active" : ""}`}
+            onClick={() => goto("post")}
+          >
+            Post
           </button>
         </nav>
-        <div className="chips">
-          <span className="chip walrus">Walrus</span>
-          <span className="chip tatum">Tatum RPC</span>
-          <span className="chip net">{cfg?.network ?? "…"}</span>
+        <div className="nav-actions">
+          <span className="net-chip">
+            <i />
+            {cfg?.network ?? "…"}
+          </span>
+          <button className="btn btn--dark nav-cta" onClick={() => goto("post")}>
+            Post a call
+          </button>
         </div>
       </header>
 
-      <section className="pitch">
-        <h1>Alpha callers fake their win rates. Veritas makes lying impossible.</h1>
-        <p>
-          Every call is sealed as an immutable <b>Walrus</b> blob and committed on <b>Sui</b> via{" "}
-          <b>Tatum</b>. Anyone can verify a track record was never edited or deleted.
-        </p>
-      </section>
+      <main id="top">
+        {tab === "feed" && (
+        <section className="hero">
+          <div className="hero-copy">
+            <p className="eyebrow">Sealed Alpha — Sui × Walrus × Tatum</p>
+            <h1 className="hero-title">
+              Alpha callers fake their win rates.
+              <span className="hl"> Veritas makes lying impossible.</span>
+            </h1>
+            <p className="hero-sub">
+              Every call is sealed as an immutable <b>Walrus</b> blob and committed on{" "}
+              <b>Sui</b> through <b>Tatum</b>. Anyone can independently verify a track record
+              was never edited or deleted.
+            </p>
+            <div className="hero-cta">
+              <button className="btn btn--dark btn--lg" onClick={() => goto("post")}>
+                Seal a call ↗
+              </button>
+              <button className="btn btn--lg" onClick={() => goto("leaderboard")}>
+                View leaderboard
+              </button>
+            </div>
+            <dl className="hero-stats">
+              <div>
+                <dt>{stats.sealed}</dt>
+                <dd>Calls sealed</dd>
+              </div>
+              <div>
+                <dt>{stats.callers}</dt>
+                <dd>Callers</dd>
+              </div>
+              <div>
+                <dt>{stats.resolved}</dt>
+                <dd>Resolved</dd>
+              </div>
+            </dl>
+          </div>
+          <aside className="hero-side" aria-hidden="true">
+            <div className="seal-card">
+              <div className="seal-card__top">
+                <Logo className="seal-card__mark" />
+                <span className="mono">veritas::registry</span>
+              </div>
+              <div className="seal-card__rows">
+                <Row k="payload" v="→ Walrus blob" />
+                <Row k="sha256" v="anchored on Sui" hl />
+                <Row k="rpc" v="Tatum gateway" />
+                <Row k="verify" v="hash === chain" hl />
+              </div>
+              <div className="seal-card__foot mono">IMMUTABLE · CONTENT-ADDRESSED</div>
+            </div>
+          </aside>
+        </section>
+        )}
 
-      {err && <div className="error">⚠ {err}</div>}
+        {err && <div className="banner banner--error">Connection issue — {err}</div>}
 
-      {tab === "feed" && (
-        <Feed loading={loading} signals={signals} cfg={cfg} onChanged={refresh} />
-      )}
-      {tab === "leaderboard" && <Leaderboard rows={board} />}
-      {tab === "post" && (
-        <PostCall
-          onSealed={() => {
-            setTab("feed");
-            refresh();
-          }}
-        />
-      )}
+        {tab === "feed" && (
+          <Feed loading={loading} signals={signals} cfg={cfg} onChanged={refresh} onPost={() => goto("post")} />
+        )}
+        {tab === "leaderboard" && <Leaderboard rows={board} />}
+        {tab === "post" && (
+          <PostCall
+            onSealed={() => {
+              goto("feed");
+              refresh();
+            }}
+          />
+        )}
+      </main>
 
       <footer className="foot">
-        <span>
-          Package:{" "}
-          {cfg?.packageId ? (
-            <a href={objUrl(cfg.network, cfg.packageId)} target="_blank" rel="noreferrer">
-              {short(cfg.packageId)}
-            </a>
-          ) : (
-            "not deployed"
-          )}
-        </span>
-        <span>Notary: {cfg?.serverAddress ? short(cfg.serverAddress) : "—"}</span>
-        <span>Built on Sui · Stored on Walrus · Powered by Tatum</span>
+        <div className="foot-brand">
+          <Logo className="foot-mark" />
+          <span>VERITAS</span>
+        </div>
+        <div className="foot-meta mono">
+          <span>
+            PKG{" "}
+            {cfg?.packageId ? (
+              <a href={objUrl(cfg.network, cfg.packageId)} target="_blank" rel="noreferrer">
+                {short(cfg.packageId)}
+              </a>
+            ) : (
+              "—"
+            )}
+          </span>
+          <span>NOTARY {cfg?.serverAddress ? short(cfg.serverAddress) : "—"}</span>
+        </div>
+        <div className="foot-tag mono">BUILT ON SUI · STORED ON WALRUS · POWERED BY TATUM</div>
       </footer>
+    </div>
+  );
+}
+
+function Row({ k, v, hl }: { k: string; v: string; hl?: boolean }) {
+  return (
+    <div className={`seal-row${hl ? " seal-row--hl" : ""}`}>
+      <span className="mono seal-row__k">{k}</span>
+      <span className="seal-row__v">{v}</span>
     </div>
   );
 }
@@ -113,21 +222,42 @@ function Feed({
   signals,
   cfg,
   onChanged,
+  onPost,
 }: {
   loading: boolean;
   signals: Signal[];
   cfg: AppConfig | null;
   onChanged: () => void;
+  onPost: () => void;
 }) {
-  if (loading) return <div className="empty">Loading sealed calls from Sui…</div>;
-  if (signals.length === 0)
-    return <div className="empty">No calls sealed yet. Be the first — “Post a Call”.</div>;
   return (
-    <div className="grid">
-      {signals.map((s) => (
-        <SignalCard key={s.signalId} s={s} cfg={cfg} onChanged={onChanged} />
-      ))}
-    </div>
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <p className="section-label">The feed</p>
+          <h2 className="section-title">Sealed calls</h2>
+        </div>
+        <button className="btn" onClick={onPost}>
+          + Post a call
+        </button>
+      </div>
+      {loading ? (
+        <div className="empty">Loading sealed calls from Sui…</div>
+      ) : signals.length === 0 ? (
+        <div className="empty">
+          No calls sealed yet.{" "}
+          <button className="linkbtn" onClick={onPost}>
+            Be the first →
+          </button>
+        </div>
+      ) : (
+        <div className="grid">
+          {signals.map((s) => (
+            <SignalCard key={s.signalId} s={s} cfg={cfg} onChanged={onChanged} />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -170,39 +300,39 @@ function SignalCard({
   const pnlPct = (s.pnlBps / 100) * (s.win ? 1 : -1);
 
   return (
-    <div className="card">
+    <article className="card">
       <div className="card-head">
         <div className="who">
           <span className="handle">@{s.handle}</span>
-          <span className={`dir ${s.direction.toLowerCase()}`}>{s.direction}</span>
-          <span className="token">{s.token}</span>
+          <span className={`tag tag--${s.direction.toLowerCase()}`}>{s.direction}</span>
+          <span className="token mono">{s.token}</span>
         </div>
         {s.resolved ? (
-          <span className={`badge ${s.win ? "win" : "loss"}`}>
+          <span className={`badge ${s.win ? "badge--win" : "badge--loss"}`}>
             {s.win ? "WIN" : "LOSS"} {pnlPct >= 0 ? "+" : ""}
             {pnlPct.toFixed(2)}%
           </span>
         ) : (
-          <span className="badge open">OPEN</span>
+          <span className="badge badge--open">OPEN</span>
         )}
       </div>
 
       <div className="levels">
         <div>
-          <label>Entry</label>
+          <label className="mono">Entry</label>
           <b>{fmt(s.entry)}</b>
         </div>
         <div>
-          <label>Target</label>
+          <label className="mono">Target</label>
           <b className="up">{fmt(s.target)}</b>
         </div>
         <div>
-          <label>Stop</label>
+          <label className="mono">Stop</label>
           <b className="down">{fmt(s.stop)}</b>
         </div>
         {s.resolved && (
           <div>
-            <label>Resolved @</label>
+            <label className="mono">Resolved @</label>
             <b>{fmt(s.resolvedPrice)}</b>
           </div>
         )}
@@ -210,22 +340,22 @@ function SignalCard({
 
       {s.thesis && <p className="thesis">{s.thesis}</p>}
 
-      <div className="meta">
+      <div className="meta mono">
         <span title="time of sealing">{new Date(s.createdAtMs).toLocaleString()}</span>
         <a href={blobUrl(cfg, s.blobId)} target="_blank" rel="noreferrer">
-          Walrus blob ↗
+          Walrus ↗
         </a>
         <a href={objUrl(net, s.signalId)} target="_blank" rel="noreferrer">
-          Sui object ↗
+          Sui ↗
         </a>
       </div>
 
       <div className="actions">
-        <button className="btn verify" onClick={doVerify} disabled={busy !== null}>
-          {busy === "verify" ? "Verifying…" : "🔎 Verify"}
+        <button className="btn btn--sm" onClick={doVerify} disabled={busy !== null}>
+          {busy === "verify" ? "Verifying…" : "Verify"}
         </button>
         {!s.resolved && (
-          <button className="btn resolve" onClick={doResolve} disabled={busy !== null}>
+          <button className="btn btn--sm btn--dark" onClick={doResolve} disabled={busy !== null}>
             {busy === "resolve" ? "Resolving…" : "Resolve @ live price"}
           </button>
         )}
@@ -233,48 +363,62 @@ function SignalCard({
 
       {verify && (
         <div className={`verify-box ${verify.match ? "ok" : "bad"}`}>
-          <div className="verdict">{verify.match ? "✓ VERIFIED" : "✗ TAMPERED"}</div>
+          <div className="verdict mono">{verify.match ? "✓ VERIFIED" : "✗ TAMPERED"}</div>
           <div className="verdict-text">{verify.verdict}</div>
-          <code>on-chain: {short(verify.onChainHash, 10)}</code>
-          <code>walrus&nbsp;&nbsp;: {short(verify.recomputedHash, 10)}</code>
+          <code className="mono">chain&nbsp;&nbsp;{short(verify.onChainHash, 10)}</code>
+          <code className="mono">walrus&nbsp;{short(verify.recomputedHash, 10)}</code>
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
 function Leaderboard({ rows }: { rows: LeaderboardRow[] }) {
-  if (rows.length === 0) return <div className="empty">No track records yet.</div>;
+  const max = Math.max(1, ...rows.map((r) => r.resolved));
   return (
-    <table className="board">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Caller</th>
-          <th>Calls</th>
-          <th>Resolved</th>
-          <th>Wins</th>
-          <th>Win rate</th>
-          <th>Avg PnL</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r, i) => (
-          <tr key={r.handle}>
-            <td>{i + 1}</td>
-            <td className="handle">@{r.handle}</td>
-            <td>{r.total}</td>
-            <td>{r.resolved}</td>
-            <td>{r.wins}</td>
-            <td className={r.winRate >= 50 ? "up" : "down"}>{r.winRate}%</td>
-            <td className={r.avgPnlBps >= 0 ? "up" : "down"}>
-              {r.avgPnlBps >= 0 ? "+" : ""}
-              {(r.avgPnlBps / 100).toFixed(2)}%
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <p className="section-label">Provable track records</p>
+          <h2 className="section-title">Leaderboard</h2>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <div className="empty">No track records yet.</div>
+      ) : (
+        <div className="board">
+          <div className="board-row board-row--head mono">
+            <span>#</span>
+            <span>Caller</span>
+            <span className="num">Calls</span>
+            <span className="num">Resolved</span>
+            <span>Win rate</span>
+            <span className="num">Avg PnL</span>
+          </div>
+          {rows.map((r, i) => (
+            <div className="board-row" key={r.handle}>
+              <span className="rank mono">{String(i + 1).padStart(2, "0")}</span>
+              <span className="bhandle">@{r.handle}</span>
+              <span className="num">{r.total}</span>
+              <span className="num">{r.resolved}</span>
+              <span className="winrate">
+                <span className="winrate-track">
+                  <span
+                    className="winrate-fill"
+                    style={{ width: `${r.winRate}%`, opacity: 0.35 + (r.resolved / max) * 0.65 }}
+                  />
+                </span>
+                <b>{r.winRate}%</b>
+              </span>
+              <span className={`num ${r.avgPnlBps >= 0 ? "up" : "down"}`}>
+                {r.avgPnlBps >= 0 ? "+" : ""}
+                {(r.avgPnlBps / 100).toFixed(2)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -315,7 +459,7 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
     try {
       const res = await api.seal(form);
       setResult(res);
-      setTimeout(onSealed, 2500);
+      setTimeout(onSealed, 2800);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -324,105 +468,112 @@ function PostCall({ onSealed }: { onSealed: () => void }) {
   }
 
   return (
-    <div className="post">
-      <h2>Seal a new call</h2>
-      <p className="hint">
-        Once sealed, the entry/target/stop are committed on-chain forever. You can never edit or
-        delete this call — that's the point.
-      </p>
-      <div className="form">
-        <Field label="Caller handle">
-          <input
-            value={form.handle}
-            placeholder="satoshi"
-            onChange={(e) => setForm({ ...form, handle: e.target.value })}
-          />
-        </Field>
-        <Field label="Token">
-          <div className="row">
-            <input
-              value={form.token}
-              onChange={(e) => setForm({ ...form, token: e.target.value.toUpperCase() })}
-            />
-            <button className="btn ghost" type="button" onClick={fetchPrice}>
-              Use live price
-            </button>
-          </div>
-          {livePrice != null && <small>live: ${livePrice}</small>}
-        </Field>
-        <Field label="Direction">
-          <div className="seg">
-            {(["LONG", "SHORT"] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                className={form.direction === d ? "active" : ""}
-                onClick={() => setForm({ ...form, direction: d })}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
-        </Field>
-        <div className="three">
-          <Field label="Entry">
-            <input
-              value={form.entry}
-              onChange={(e) => setForm({ ...form, entry: e.target.value })}
-            />
-          </Field>
-          <Field label="Target">
-            <input
-              value={form.target}
-              onChange={(e) => setForm({ ...form, target: e.target.value })}
-            />
-          </Field>
-          <Field label="Stop">
-            <input
-              value={form.stop}
-              onChange={(e) => setForm({ ...form, stop: e.target.value })}
-            />
-          </Field>
+    <section className="panel">
+      <div className="panel-head">
+        <div>
+          <p className="section-label">Commit forever</p>
+          <h2 className="section-title">Seal a call</h2>
         </div>
-        <Field label="Thesis">
-          <textarea
-            value={form.thesis}
-            rows={3}
-            placeholder="Why this trade?"
-            onChange={(e) => setForm({ ...form, thesis: e.target.value })}
-          />
-        </Field>
-        <button className="btn primary big" disabled={!valid || busy} onClick={submit}>
-          {busy ? "Sealing on Walrus + Sui…" : "🔏 Seal this call"}
-        </button>
-        {error && <div className="error">⚠ {error}</div>}
-        {result && (
-          <div className="seal-result">
-            <div className="ok-row">✓ Sealed & anchored on-chain</div>
-            <code>blobId: {short(result.blobId, 12)}</code>
-            <code>hash: {short(result.payloadHash, 12)}</code>
-            <div className="links">
-              <a href={result.walrusUrl} target="_blank" rel="noreferrer">
-                Walrus blob ↗
-              </a>
-              <a href={result.explorer.object} target="_blank" rel="noreferrer">
-                Sui object ↗
-              </a>
-              <a href={result.explorer.tx} target="_blank" rel="noreferrer">
-                Tx ↗
-              </a>
-            </div>
-          </div>
-        )}
       </div>
-    </div>
+      <div className="post">
+        <p className="hint">
+          Once sealed, the entry / target / stop are committed on-chain forever. You can never
+          edit or delete this call — that's the point.
+        </p>
+        <div className="form">
+          <Field label="Caller handle">
+            <input
+              value={form.handle}
+              placeholder="satoshi"
+              onChange={(e) => setForm({ ...form, handle: e.target.value })}
+            />
+          </Field>
+          <Field label="Token">
+            <div className="row">
+              <input
+                value={form.token}
+                onChange={(e) => setForm({ ...form, token: e.target.value.toUpperCase() })}
+              />
+              <button className="btn btn--sm" type="button" onClick={fetchPrice}>
+                Use live price
+              </button>
+            </div>
+            {livePrice != null && <small className="mono">live ${livePrice}</small>}
+          </Field>
+          <Field label="Direction">
+            <div className="seg">
+              {(["LONG", "SHORT"] as const).map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  className={form.direction === d ? "active" : ""}
+                  onClick={() => setForm({ ...form, direction: d })}
+                >
+                  {d}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <div className="three">
+            <Field label="Entry">
+              <input
+                value={form.entry}
+                onChange={(e) => setForm({ ...form, entry: e.target.value })}
+              />
+            </Field>
+            <Field label="Target">
+              <input
+                value={form.target}
+                onChange={(e) => setForm({ ...form, target: e.target.value })}
+              />
+            </Field>
+            <Field label="Stop">
+              <input
+                value={form.stop}
+                onChange={(e) => setForm({ ...form, stop: e.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="Thesis">
+            <textarea
+              value={form.thesis}
+              rows={3}
+              placeholder="Why this trade?"
+              onChange={(e) => setForm({ ...form, thesis: e.target.value })}
+            />
+          </Field>
+          <button className="btn btn--dark btn--lg btn--block" disabled={!valid || busy} onClick={submit}>
+            {busy ? "Sealing on Walrus + Sui…" : "Seal this call"}
+          </button>
+          {error && <div className="banner banner--error">{error}</div>}
+          {result && (
+            <div className="seal-result">
+              <div className="ok-row mono">✓ SEALED &amp; ANCHORED ON-CHAIN</div>
+              <code className="mono">blobId {short(result.blobId, 12)}</code>
+              <code className="mono">hash&nbsp;&nbsp;&nbsp;{short(result.payloadHash, 12)}</code>
+              <div className="links mono">
+                <a href={result.walrusUrl} target="_blank" rel="noreferrer">
+                  Walrus ↗
+                </a>
+                <a href={result.explorer.object} target="_blank" rel="noreferrer">
+                  Sui object ↗
+                </a>
+                <a href={result.explorer.tx} target="_blank" rel="noreferrer">
+                  Tx ↗
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="field">
-      <span>{label}</span>
+      <span className="mono">{label}</span>
       {children}
     </label>
   );
