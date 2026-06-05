@@ -21,7 +21,7 @@ const calls: Call[] = [
   { handle: "alpha_wolf", token: "BTC", direction: "LONG", entry: "61000", target: "90000", stop: "52000", thesis: "Halving supply shock plays out over the year." },
 ];
 
-async function post(path: string, body?: unknown) {
+async function post<T = unknown>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -29,7 +29,7 @@ async function post(path: string, body?: unknown) {
   });
   const json = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(json));
-  return json;
+  return json as T;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -37,16 +37,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function main() {
   for (const c of calls) {
     try {
-      const sealed = await post("/signals", c);
+      const sealed = await post<{ signalId: string }>("/signals", c);
       console.log(`sealed @${c.handle} ${c.direction} ${c.token} -> ${sealed.signalId}`);
       await sleep(1500);
       if (c.resolve) {
-        const r = await post(`/signals/${sealed.signalId}/resolve`);
+        const r = await post<{ win: boolean; pnlBps: number }>(
+          `/signals/${sealed.signalId}/resolve`,
+        );
         console.log(`  resolved: ${r.win ? "WIN" : "LOSS"} ${(r.pnlBps / 100).toFixed(2)}%`);
         await sleep(1500);
       }
-    } catch (e: any) {
-      console.error(`failed @${c.handle} ${c.token}:`, e.message);
+    } catch (e) {
+      console.error(`failed @${c.handle} ${c.token}:`, e instanceof Error ? e.message : e);
     }
   }
   console.log("done");
