@@ -51,10 +51,8 @@ export async function generateShareImage(data: ShareCardData): Promise<Blob | nu
     ctx.font = "bold 13px Arial, sans-serif";
     ctx.fillText("✓", 26, 46);
     ctx.fillStyle = paper;
-    ctx.font = "bold 13px Arial, sans-serif";
-    ctx.letterSpacing = "0.14em";
-    ctx.fillText("VERITAS", 44, 46);
-    ctx.letterSpacing = "0";
+    ctx.font = "bold 14px Arial, sans-serif";
+    ctx.fillText("V E R I T A S", 44, 46);
 
     // Direction badge
     const badgeW = 60, badgeH = 22, badgeX = W - badgeW - 26, badgeY = 28;

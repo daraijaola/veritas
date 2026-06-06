@@ -80,6 +80,15 @@ export interface ResolveResponse {
   explorer: { tx: string };
 }
 
+/** fetch() with a hard timeout — prevents hanging forever on cold Render starts */
+function fetchWithTimeout(input: string, init?: RequestInit, ms = 12_000): Promise<Response> {
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), ms);
+  return fetch(input, { ...init, signal: controller.signal }).finally(() =>
+    clearTimeout(tid),
+  );
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -89,19 +98,28 @@ async function j<T>(res: Response): Promise<T> {
 }
 
 export const api = {
-  config: () => fetch(`${BASE}/config`).then(j<AppConfig>),
-  signals: () => fetch(`${BASE}/signals`).then(j<Signal[]>),
-  leaderboard: () => fetch(`${BASE}/leaderboard`).then(j<LeaderboardRow[]>),
+  config: () => fetchWithTimeout(`${BASE}/config`).then(j<AppConfig>),
+  signals: () => fetchWithTimeout(`${BASE}/signals`).then(j<Signal[]>),
+  leaderboard: () => fetchWithTimeout(`${BASE}/leaderboard`).then(j<LeaderboardRow[]>),
   price: (token: string) =>
-    fetch(`${BASE}/price/${token}`).then(j<{ symbol: string; usd: number; source: string }>),
+    fetchWithTimeout(`${BASE}/price/${token}`).then(
+      j<{ symbol: string; usd: number; source: string }>,
+    ),
   /** Step 1: Store blob on Walrus, get blobId + payloadHash. User signs Sui tx separately. */
   prepare: (body: unknown) =>
-    fetch(`${BASE}/prepare`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }).then(j<PrepareResponse>),
-  verify: (id: string) => fetch(`${BASE}/signals/${id}/verify`).then(j<VerifyResponse>),
+    fetchWithTimeout(
+      `${BASE}/prepare`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      30_000, // longer timeout for write ops
+    ).then(j<PrepareResponse>),
+  verify: (id: string) =>
+    fetchWithTimeout(`${BASE}/signals/${id}/verify`, {}, 20_000).then(j<VerifyResponse>),
   resolve: (id: string) =>
-    fetch(`${BASE}/signals/${id}/resolve`, { method: "POST" }).then(j<ResolveResponse>),
+    fetchWithTimeout(`${BASE}/signals/${id}/resolve`, { method: "POST" }, 20_000).then(
+      j<ResolveResponse>,
+    ),
 };
